@@ -1,205 +1,237 @@
 // Variables globales
-const API_URL = 'http://localhost:3000'; // URL base de la API backend
-let personas = []; // Arreglo donde se almacenan las personas del servidor
+const API_URL = 'http://localhost:3000/api'; // URL base de la API backend
+let personas = []; // Arreglo donde se almacenan las personas obtenidas del servidor
 
 // Elementos del DOM
 const personaForm = document.getElementById('personaForm'); // Formulario principal
 const tablaPersonasBody = document.getElementById('tablaPersonasBody'); // Cuerpo de la tabla donde se listan personas
-const idPersona = document.getElementById('id_persona'); // ID oculto para edición
-const nombre = document.getElementById('nombre');
-const apellido = document.getElementById('apellido');
-const tipo_identificacion = document.getElementById('tipo_identificacion');
-const nuip = document.getElementById('nuip');
-const email = document.getElementById('email');
-const clave = document.getElementById('clave');
-const salario = document.getElementById('salario');
-const activo = document.getElementById('activo');
-const imagen = document.getElementById('imagen'); // Imagen para previsualizar la subida
-const previewImagen = document.getElementById('previewImagen');
+const btnCancelar = document.getElementById('btnCancelar'); // Botón de limpiar el formulario
+const imagenInput = document.getElementById('imagen'); // Input de imagen
+const previewImagen = document.getElementById('previewImagen'); // Elemento imagen de previsualización
 
-document.addEventListener('DOMContentLoaded', cargarPersonas); // Carga personas al iniciar la página
-document.getElementById('btnCancelar').addEventListener('click', limpiarFormulario); // Botón cancelar limpia el formulario
-imagen.addEventListener('change', mostrarImagenSeleccionada); // Cargar previsualización cuando se selecciona imagen
+// Eventos Listeners
+document.addEventListener('DOMContentLoaded', cargarPersonas); // Carga personas al iniciar la pagina
+personaForm.addEventListener('submit', manejarSubmit); // Enviar el formulario
+btnCancelar.addEventListener('click', limpiarFormulario); // Botón de cancelar limpia el forrmulario
+imagenInput.addEventListener('change', manejarImagen); // Cargar previsualización cuando se selecciona imagen
 
-// Función para obtener personas (GET)
+// Funciones que obtiene personass del backend
 async function cargarPersonas() {
   try {
     const response = await fetch(`${API_URL}/personas`); // Solicitud GET a la API
-    personas = await response.json(); // Almacena las personas en el arreglo
-    tablaPersonasBody.innerHTML = ''; // Limpia las personas actuales en tabla
+    personas = await response.json(); // Almacena respuesta en arreglo
+    await mostrarPersonas(); // Muestra las personas en la tabla
   } catch (error) {
     console.error('Error al cargar personas:', error);
   }
+}
 
-  // Función para mostrar todas las personas en la tabla
-  const template = document.getElementById('template');
-  personas.forEach(async (persona) => {
-    const clone = template.content.cloneNode(true); // Clona la estructura de una fila ya definida
+// Función para mostrar todas las personas en la tabla
+async function mostrarPersonas() {
+    // Limpia el contenido actul del cuerpo de la taba para evitar duplicados
+  tablaPersonasBody.innerHTML = '';
+
+    // Obtiene el elemento <template> que contiene la estructura de una fila de persona
+    const template = document.getElementById('template')
+
+    // Recorre la lista de personas obtenidas desde el backend
+  for (const persona of personas) {
+    // Clona el contenido del template (la fila predefinida)
+    const clone = template.content.cloneNode(true);
+
+    // Obtiene todas las celdas <td> dentro del clan
     const tds = clone.querySelectorAll('td');
 
-    // Recorre la lista de personas y completa la fila con sus datos
-    tds[0].textContent = persona.id_persona;
-    tds[1].textContent = persona.nombre;
-    tds[2].textContent = persona.apellido;
-    tds[3].textContent = persona.email;
+    // Cargar la imagen si existe
+    let imagenHTML = 'Sin imagen';
 
-    // Imagen
-    const imagenTag = document.createElement('img');
-    imagenTag.src = persona.imagen || 'noimagen.jpg'; // 'noimagen.jpg' por defecto
-    imagenTag.alt = persona.nombre;
-    imagenTag.style = 'max-width: 100px; max-height: 100px;';
-    tds[4].appendChild(imagenTag);
+    try {
+        // Realiza una petición GET al endpoint de imagen de la persona por su ID
+      const response = await fetch(`${API_URL}/imagenes/obtener/personas/id_persona/${persona.id_persona}`);
 
-    // Acciones - botones
+    //   Convierte la respuesta en un objeto JSON
+      const data = await response.json();
+
+      if (data.imagen) {
+        imagenHTML = `<img src="data:image/jpeg;base64,${data.imagen}" style="max-width: 100px; max-height: 100px;">`;
+      }
+    } catch (error) {
+        // Si ocurre un error al obtener la imagen, lo muestro en consoloa
+      console.error('Error al cargar imagen:', error);
+    }
+
+    // Llena las celdas con los dotos de la persona
+    tds[0].textContent = persona.id_persona;// ID
+    tds[1].textContent = persona.nombre;// Nombre
+    tds[2].textContent = persona.apellido;// Apellido
+    tds[3].textContent = persona.email; // Email
+    tds[4].innerHTML = imagenHTML; // Imagen (si existe, muestra imagen, si no, "Sin imagen")
+
+    // Busca los botones de editar y eliminar destro del clon
     const btnEditar = clone.querySelector('.btn-editar');
+    const btnEliminar = clone.querySelector('.btn-eliminar');
+
+    // Asigna el evento de clic del botón d eeditar, llamando a la función con el ID de la persona
     btnEditar.addEventListener('click', () => editarPersona(persona.id_persona));
 
-    const btnEliminar = clone.querySelector('.btn-eliminar');
+    // Asigna el evento de clic al botón de eliminar, llamando a la función con el ID de la erosna
     btnEliminar.addEventListener('click', () => eliminarPersona(persona.id_persona));
-
-    // Finalmente, agrega la fila clonada (con datos y botones configurados) al cuerpo de la tabla
+    
+    //  Finalmente, agrega la fia clnada (con datos y botones configurados) alcuerpo de la tabla
     tablaPersonasBody.appendChild(clone);
-  });
+  }
 }
 
 // Función que maneja el envío del formulario (crear o editar persona)
-personaForm.addEventListener('submit', async (e) => {
-  e.preventDefault(); // Previene el comportamiento por defecto del formulario
-
-  // Obtiene los datos del formulario
-  const nuevaPersona = {
-    id_persona: idPersona.value ? parseInt(idPersona.value) : null,
-    nombre: nombre.value.trim(),
-    apellido: apellido.value.trim(),
-    tipo_identificacion: tipo_identificacion.value,
-    nuip: nuip.value.trim(),
-    email: email.value.trim(),
-    clave: clave.value.trim(),
-    salario: parseFloat(salario.value),
-    activo: activo.checked
-  };
-
-  try {
-    if (!nuevaPersona.id_persona) {
-      // Crear persona
-      const response = await fetch(`${API_URL}/personas`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(nuevaPersona)
-      });
-      const personaGuardada = await response.json();
-
-      // Si se cargó imagen, la subimos
-      if (imagen.files[0]) {
-        const imagenBase64 = await convertirImagenABase64(imagen.files[0]);
-        await fetch(`${API_URL}/imagenes/actualizar/persona/${personaGuardada.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ imagen: imagenBase64 })
-        });
-      }
-    } else {
-      await actualizarPersona(nuevaPersona);
-    }
-
-    cargarPersonas(); // Recarga la lista
-    limpiarFormulario(); // Limpia el formulario
-  } catch (error) {
-    console.error('Error al guardar la persona:', error);
-  }
-});
-
-// Devuelve los datos de una persona por ID
-async function obtenerPersona(id_persona) {
-  const response = await fetch(`${API_URL}/personas/${id_persona}`);
-  return await response.json(); // Devuelve el objeto persona recibido con id
-}
-
-// Actualiza una persona seleccionada
-async function actualizarPersona(persona) {
-  return await fetch(`${API_URL}/personas/${persona.id_persona}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(persona)
-  });
-}
-
-// Elimina persona por id
-async function eliminarPersona(id_persona) {
-  try {
-    await fetch(`${API_URL}/imagenes/eliminar/persona/${id_persona}`, { method: 'DELETE' }); // elimina imagen
-
-    await fetch(`${API_URL}/personas/${id_persona}`, {
-      method: 'DELETE'
-    }); // elimina persona
-
-    cargarPersonas();
-  } catch (error) {
-    console.error('Error al eliminar persona:', error);
-  }
-}
-
-// Llena el formulario con los datos de una persona para editar
-async function editarPersona(id) {
-  const persona = await obtenerPersona(id);
-  idPersona.value = persona.id_persona;
-  nombre.value = persona.nombre;
-  apellido.value = persona.apellido;
-  tipo_identificacion.value = persona.tipo_identificacion;
-  nuip.value = persona.nuip;
-  email.value = persona.email;
-  clave.value = persona.clave;
-  salario.value = persona.salario;
-  activo.checked = persona.activo;
-
-  // Carga la imagen si existe
-  try {
-    const response = await fetch(`${API_URL}/imagenes/obtener/persona/id_persona/${id}`);
-    const data = await response.json();
-    const url_imagen = `${API_URL}/imagenes/${data.nombre}`;
-    previewImagen.src = url_imagen;
-    previewImagen.style.display = 'block';
-  } catch (error) {
-    console.error('Error al cargar imagen:', error);
-    previewImagen.style.display = 'none';
-  }
-}
-
-// Limpia todos los campos del formulario
-function limpiarFormulario() {
-  personaForm.reset();
-  idPersona.value = '';
-  previewImagen.src = '';
-  previewImagen.style.display = 'none';
-}
-
-// Muestra una previsualización de la imagen seleccionada
-function mostrarImagenSeleccionada() {
-  if (this.files && this.files[0]) {
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      previewImagen.src = e.target.result;
-      previewImagen.style.display = 'block';
+async function manejarSubmit(e) {
+    e.preventDefault(); // Previene el comportamiento por defecto del formulario
+  
+    // Obtiene los datos del formulario
+    const persona = {
+      id_persona: document.getElementById('id_persona').value || null,
+      nombre: document.getElementById('nombre').value,
+      apellido: document.getElementById('apellido').value,
+      tipo_identificacion: document.getElementById('tipo_identificacion').value,
+      nuip: parseInt(document.getElementById('nuip').value),
+      email: document.getElementById('email').value,
+      clave: document.getElementById('clave').value,
+      salario: parseFloat(document.getElementById('salario').value),
+      activo: document.getElementById('activo').checked
     };
-    reader.readAsDataURL(this.files[0]);
-  } else {
-    previewImagen.src = '';
-    previewImagen.style.display = 'none';
+  
+    try {
+      if (persona.id_persona) {
+        // Si estamos editando (id_persona existe)
+        // Subir imagen si fue seleccionada
+        if (imagenInput.files[0]) {
+          const imagenBase64 = await convertirImagenABase64(imagenInput.files[0]);
+          await fetch(`${API_URL}/imagenes/subir/personas/id_persona/${persona.id_persona}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imagen: imagenBase64 })
+          });
+        }
+        // Actualizar los datos de la persona
+        await actualizarPersona(persona);
+      } else {
+        // Si es nueva persona
+        const nuevaPersona = await crearPersona(persona); // Crear persona
+        if (imagenInput.files[0]) {
+          const imagenBase64 = await convertirImagenABase64(imagenInput.files[0]);
+          await fetch(`${API_URL}/imagenes/insertar/personas/id_persona/${nuevaPersona.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imagen: imagenBase64 })
+          });
+        }
+      }
+      limpiarFormulario(); // Limpia el formulario
+      cargarPersonas();    // Recarga la lista
+    } catch (error) {
+      console.error('Error al guardar persona:', error);
+      alert('Error al guardar los datos: ' + error.message);
+    }
   }
-}
-
-// Convierte imagen a base64 para enviarla al backend
-function convertirImagenABase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(',')[1]); // Elimina el prefijo del data URI
-    reader.onerror = error => reject(error);
-  });
-}
+  
+  // Crea una persona nueva en la base de datos
+  async function crearPersona(persona) {
+    const response = await fetch(`${API_URL}/personas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(persona)
+    });
+    return await response.json(); // Devuelve el objeto persona nuevo con id
+  }
+  
+  // Actualiza una persona existente
+  async function actualizarPersona(persona) {
+    const response = await fetch(`${API_URL}/personas/${persona.id_persona}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(persona)
+    });
+    return await response.json();
+  }
+  
+  // Elimina persona (y su imagen si existe)
+  async function eliminarPersona(id) {
+    if (confirm('¿Está seguro de eliminar esta persona?')) {
+      try {
+        await fetch(`${API_URL}/imagenes/eliminar/personas/id_persona/${id}`, { method: 'DELETE' }); // Elimina imagen
+        await fetch(`${API_URL}/personas/${id}`, { method: 'DELETE' }); // Elimina persona
+        cargarPersonas(); // Recarga la lista
+      } catch (error) {
+        console.error('Error al eliminar persona:', error);
+        alert('Error al eliminar la persona: ' + error.message);
+      }
+    }
+  }
+  
+  async function editarPersona(id) {
+    const persona = personas.find(p => p.id_persona === id);
+    if (persona) {
+      document.getElementById('id_persona').value = persona.id_persona;
+      document.getElementById('nombre').value = persona.nombre;
+      document.getElementById('apellido').value = persona.apellido;
+      document.getElementById('tipo_identificacion').value = persona.tipo_identificacion;
+      document.getElementById('nuip').value = persona.nuip;
+      document.getElementById('email').value = persona.email;
+      document.getElementById('clave').value = ''; // No se muestra la contraseña
+      document.getElementById('salario').value = persona.salario;
+      document.getElementById('activo').checked = persona.activo;
+  
+      // Carga la imagen si existe
+      try {
+        const response = await fetch(`${API_URL}/imagenes/obtener/personas/id_persona/${id}`);
+        const data = await response.json();
+        if (data.imagen) {
+          previewImagen.src = `data:image/jpeg;base64,${data.imagen}`;
+          previewImagen.style.display = 'block';
+        } else {
+          previewImagen.style.display = 'none';
+          previewImagen.src = '';
+        }
+      } catch (error) {
+        console.error('Error al cargar imagen:', error);
+        previewImagen.style.display = 'none';
+        previewImagen.src = '';
+      }
+    }
+  }
+  
+  // Limpia todos los campos del formulario
+  function limpiarFormulario() {
+    personaForm.reset();
+    document.getElementById('id_persona').value = '';
+    previewImagen.style.display = 'none';
+    previewImagen.src = '';
+  }
+  
+  // Muestra una previsualización de la imagen seleccionada
+  function manejarImagen(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function() {
+        previewImagen.src = reader.result;
+        previewImagen.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    } else {
+      previewImagen.style.display = 'none';
+      previewImagen.src = '';
+    }
+  }
+  
+  // Convierte imagen a base64 para enviarla al backend
+  function convertirImagenABase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1]; // Elimina el prefijo del data URI
+        resolve(base64);
+      };
+      reader.onerror = error => reject(error);
+    });
+  }
